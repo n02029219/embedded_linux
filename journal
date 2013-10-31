@@ -1,0 +1,27 @@
+1)
+Followed steps at:
+http://docs.opencv.org/doc/tutorials/tutorials.html
+and
+http://tech.enekochan.com/2012/05/21/install-opencv-2-3-1a-in-mac-os-x-10-6/
+to install OpenCV libraries, header files, etc (along with a few other references).
+Had to download OpenCV version 2.3.1 because when trying to run 'make' with the newest version (via the github repo), errors were encountered.
+2)
+Prepared an XCode application by following the steps at:
+http://tech.enekochan.com/2012/05/21/use-opencv-in-xcode-4-for-a-mac-os-x-application/
+This outlines the basic steps needed to properly run an OpenCV application using XCode.
+3)
+Installed OpenCV on the Raspberry Pi by following steps on their tutorial page:
+http://docs.opencv.org/doc/tutorials/tutorials.html
+This took quite a bit longer, but the libraries are all in place now.
+Have yet to try running an OpenCV program on the Pi
+4)
+Followed some tutorials at the OpenCV website:
+http://docs.opencv.org/doc/tutorials/tutorials.html
+to learn basic functionality, and some more advanced techniques, like line detection.
+5)
+Using HoughLines() after Canny() edge-detection to determine where the lines occur.
+Filtered out some horizontal lines by determining their slope and not drawing them.
+6)
+Need to do this better, possibly by using contours (next tutorial planned to read)
+Also need to combine lines that are close together into a single line that divides the lanes or marks the edge of the road.
+Need to research methods to do so.

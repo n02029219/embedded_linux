@@ -1,0 +1,5 @@
+NOTES for C++ files:
+
+1)
+Any included OpenCV-specific header files are not added, because they reference installed libraries or c++ files that are deep within directories.
+Because of this, the files cannot be run as-is, and need to be compiled on a machine that has OpenCV already installed.
