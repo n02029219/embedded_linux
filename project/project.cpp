@@ -1,106 +1,181 @@
 //
-//  main.cpp
+//  project.cpp
 //  opencv
 //
-//  line-detection of an image
-
 
 #include "project.h"
 
-int main (int argc, const char * argv[])
-{
-    
-    const char* filename = argc >= 2 ? argv[1] : "road2.png";
-    
-    // create image matrix
-    // loading image in non-grayscale causes an error
-    Mat src = imread(filename, CV_LOAD_IMAGE_GRAYSCALE);
-    if (src.empty()) {
-        //help();
-        cout << "cannot open " << filename << endl;
-        return -1;
-    }
-    
-    // beginning time:
-    clock_t start = clock();
-    
-    // create destination matrix
-    Mat dst, cdst;
-    // use Canny for edge-detection
-    // source, destinaton, threshold1, threshold2, aperturesize=3, L2gradient=false
-    blur(dst, dst, Size(3,3));
-    Canny(src, dst, CANNY_T1, CANNY_T2, CANNY_APERTURE);
-    cvtColor(dst, cdst, CV_GRAY2RGB);
-    
-    // time of canny
-    clock_t canny_end = clock();
-    
-    // ================ PROBABILISTIC HOUGH LINE TRANSFORM ==================
-    //      creates line segments
-    // dst: edge-detector output (should be grayscale) 
-    // lines: vector to store lines found;
-    // rho: resolution of parameter r in pixels (using 1)
-    // theta: resolution of parameter theta in radians (using 1 degree)
-    // threshold: The minimum number of intersections to “detect” a line
-    // minLinLength: The minimum number of points that can form a line. Lines with less than this number of points are disregarded.
-    // maxLineGap: The maximum gap between two points to be considered in the same line.
-    
-    vector<Vec4i> lines;
-    HoughLinesP(dst, lines, 1, CV_PI/180, HLINES_THRESH, HLINES_MINLINE, HLINES_MINGAP);
-    
-    // filter out horizontal lines
-    remove_horizontal(&lines);
-    
-    //vector<Vec4i> lane_lines = combine_lines(lines);
-    //lane_lines = extend_lines(lane_lines, dst.cols, dst.rows);
-    
-    // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
-    cout << "size of lines: " << lines.size() << endl;
-    //cout << "size of lane_lines: " << lane_lines.size() << endl;
-    cout << "width: " << dst.cols << "  height: " << dst.rows << endl;
-    //line(cdst, Point(0,0), Point(100,100), Scalar(255,255,255), 2, CV_AA);
-    // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+// ===================================================================
+// draw_lane() - to draw the actual lanes in between lines
+// ===================================================================
 
-    // display result:
-    for( size_t i = 0; i < lines.size(); i++ )
-    {
-        Vec4i l = lines[i];
-        line( cdst, Point(l[X1], l[Y1]), Point(l[X2], l[Y2]), Scalar(0,255,255), 1, CV_AA);
-        cout << i << " (" << l[X1] << "," << l[Y1] << ") \t(" << l[X2] << "," << l[Y2] << ")" << endl; 
+// finds a middle line, and draws a polygon from the leftmost to middle and from rightmost to middle
+// assumes "american" style roads (drive in right, oncoming on left)
+// polgyon point format:
+//  topleft, bottomleft, bottomright, topright
+Mat draw_2lanes(Mat src, vector<Vec4i> lines)
+{
+    Mat lanes = src, dst;                     // for blending in semi-transparent lanes
+    Vec4i midline = middle_line(lines);
+    Vec4i left = leftmost(lines);
+    Vec4i right = rightmost(lines);
+    
+    int npt[1] = { NUM_VERTICES };      // number of points to draw (must be int[])
+    
+    // create left lane polygon (oncoming traffic lane)
+    // use slope to determine which points are which
+    Point left_pts[1][4];
+    if (slope(left) >= 0) {
+        left_pts[0][0] = Point(left[0]+LANE_EDGE, left[1]);
+        left_pts[0][1] = Point(left[2]+LANE_EDGE, left[3]);
     }
-    cout << "------" << endl;
-    // display "lane lines"
-    /*
-    for( size_t i = 0; i < lane_lines.size(); i++ )
-    {
-        Vec4i l = lane_lines[i];
-        //line( cdst, Point(l[X1], l[Y1]), Point(l[X2], l[Y2]), Scalar(0,255,255), 2, CV_AA);
-        cout << i << " (" << l[X1] << "," << l[Y1] << ") \t(" << l[X2] << "," << l[Y2] << ")" << endl; 
-    }*/
+    else {
+        left_pts[0][0] = Point(left[2]+LANE_EDGE, left[3]);
+        left_pts[0][1] = Point(left[0]+LANE_EDGE, left[1]);
+    }
+    if (slope(midline) >= 0) {
+        left_pts[0][3] = Point(midline[0]-LANE_EDGE, midline[1]);
+        left_pts[0][2] = Point(midline[2]-LANE_EDGE, midline[3]);
+    }
+    else {
+        left_pts[0][3] = Point(midline[2]-LANE_EDGE, midline[3]);
+        left_pts[0][2] = Point(midline[0]-LANE_EDGE, midline[1]);
+    }
+    const Point * left_ppt[1] = { left_pts[0] };
+    fillPoly(lanes, left_ppt, npt, NUM_POLYGONS, ONCOMING_COLOR, LINE_TYPE);
     
+    // create right lane polygon (oncoming traffic lane)
+    // use slope to determine which points are which
+    Point right_pts[1][4];
+    if (slope(midline) >= 0) {
+        right_pts[0][0] = Point(midline[0]+LANE_EDGE, midline[1]);
+        right_pts[0][1] = Point(midline[2]+LANE_EDGE, midline[3]);
+    }
+    else {
+        right_pts[0][0] = Point(midline[2]+LANE_EDGE, midline[3]);
+        right_pts[0][1] = Point(midline[0]+LANE_EDGE, midline[1]);
+    }
+    if (slope(right) >= 0) {
+        right_pts[0][3] = Point(right[0]-LANE_EDGE, right[1]);
+        right_pts[0][2] = Point(right[2]-LANE_EDGE, right[3]);
+    }
+    else {
+        right_pts[0][3] = Point(right[2]-LANE_EDGE, right[3]);
+        right_pts[0][2] = Point(right[0]-LANE_EDGE, right[1]);
+    }
+    const Point * right_ppt[1] = { right_pts[0] };
+    fillPoly(lanes, right_ppt, npt, NUM_POLYGONS, THISLANE_COLOR, LINE_TYPE);
     
-    // total end time
-    clock_t end = clock();
-    cout << endl;
-    cout << "Total time: " << double(end-start)/CLOCKS_PER_SEC << endl;
-    cout << "Canny time: " << double(canny_end-start)/CLOCKS_PER_SEC << endl;
-    cout << "Lines time: " << double(end-canny_end)/CLOCKS_PER_SEC << endl;
+    // should blend the images to make semi-transparent lanes (doesn't work right)
+    addWeighted(lanes, ALPHA, src, 1-ALPHA, 0.0, dst);
+    return dst;
+}
+
+// draws polgyon from leftmost to rightmost lines
+Mat draw_1lane(Mat src, vector<Vec4i> lines)
+{
+    Mat lanes = src, dst;                     // for blending in semi-transparent lanes
+    Vec4i left = leftmost(lines);
+    Vec4i right = rightmost(lines);
     
-    // create output image: .png file
-    vector<int> compression_params;
-    compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-    compression_params.push_back(9);    // 0-9 for png quality
-    imwrite("output_lines.png", cdst, compression_params);
+    int npt[1] = { NUM_VERTICES };      // number of points to draw (must be int[])
     
-    // display output
-    namedWindow("original image");
-    imshow("original image", src);
-    waitKey(1000);  // waits 1 seconds
-    namedWindow("lines detected");
-    imshow("lines detected", cdst);
-    waitKey();
+    // create left lane polygon (oncoming traffic lane)
+    // use slope to determine which points are which
+    Point pts[1][4];
+    if (slope(left) >= 0) {
+        pts[0][0] = Point(left[0]+LANE_EDGE, left[1]);
+        pts[0][1] = Point(left[2]+LANE_EDGE, left[3]);
+    }
+    else {
+        pts[0][0] = Point(left[2]+LANE_EDGE, left[3]);
+        pts[0][1] = Point(left[0]+LANE_EDGE, left[1]);
+    }
+    if (slope(right) >= 0) {
+        pts[0][3] = Point(right[0]-LANE_EDGE, right[1]);
+        pts[0][2] = Point(right[2]-LANE_EDGE, right[3]);
+    }
+    else {
+        pts[0][3] = Point(right[2]-LANE_EDGE, right[3]);
+        pts[0][2] = Point(right[0]-LANE_EDGE, right[1]);
+    }
+    const Point * ppt[1] = { pts[0] };
+    fillPoly(lanes, ppt, npt, NUM_POLYGONS, THISLANE_COLOR, LINE_TYPE);
     
-    return 0;
+    // should blend the images to make semi-transparent lanes (doesn't work right)
+    addWeighted(lanes, ALPHA, src, 1-ALPHA, 0.0, dst);
+    return dst;
+}
+
+// ------------------------
+// finding lines (middle, leftmost, rightmost)
+
+// finds the "middle" line: always using l[0], first x-point
+// middle line if x point is both less than another's, and greater than another
+Vec4i middle_line(vector<Vec4i> lines)
+{
+    for (int i = 0; i < lines.size(); i++) {
+        bool less = false;
+        bool more = false;
+        Vec4i l1 = lines[i];
+        for (int j = 0; j < lines.size(); j++) {
+            if (i == j)
+                continue;   // skip same line
+            Vec4i l2 = lines[j];
+            
+            if (l1[0] < l2[0])
+                less = true;
+            if (l1[2] > l2[2])
+                more = true;
+            
+            if (less && more)
+                return l1;
+        }
+    }
+    // else: (shouldn't happen, there MUST be a middle line)
+    return lines[0];
+}
+
+// finds the leftmost line (x = min)
+Vec4i leftmost(vector<Vec4i> lines)
+{
+    Vec4i left = lines[0];
+    // choose leftmost point
+    int min_x1 = (lines[0])[X1];
+    int min_x2 = (lines[0])[X2];
+    
+    for (int i = 1; i < lines.size(); i++) {
+        Vec4i l = lines[i];
+        // X1 may be <= because of extend_lines()
+        if (l[X1] <= min_x1 && l[X2] < min_x2) {
+            left = lines[i];
+            min_x1 = l[X1];
+            min_x2 = l[X2];
+        }
+    }
+    
+    return left;
+}
+
+// finds the rightmost line (x = max)
+Vec4i rightmost(vector<Vec4i> lines)
+{
+    Vec4i right = lines[0];
+    // choose rightmost point
+    int max_x1 = (lines[0])[X1];
+    int max_x2 = (lines[0])[X2];
+    
+    for (int i = 1; i < lines.size(); i++) {
+        Vec4i l = lines[i];
+        // X2 may be >= because of extend_lines()
+        if (l[X1] > max_x1 && l[X2] >= max_x2) {
+            right = lines[i];
+            max_x1 = l[X1];
+            max_x2 = l[X2];
+        }
+    }
+    
+    return right;
 }
 
 
@@ -140,6 +215,20 @@ bool horizontal(Vec4i l)
         return true;
 }
 
+// removes lines above the midway point of image; they are in the sky (can't be road lines)
+void remove_skylines(vector<Vec4i> * lines, int height)
+{
+    for (size_t i = 0; i < lines->size(); i++)
+        if (skyline((*lines)[i], height))
+            lines->erase(lines->begin() + i--);
+}
+
+// determines if a line is "in the sky" (both y-points are above midway point of image
+bool skyline(Vec4i l, int height)
+{
+    return (l[Y1] < height / 2 && l[Y2] < height / 2)   ?   true : false;
+}
+
 // ------------------------
 
 // concatenate lines that are close together (same slope, similar x,y position)
@@ -153,7 +242,11 @@ vector<Vec4i> combine_lines(vector<Vec4i> lines)
     bool same = false;
     
     for (size_t i = 0; i < new_lines.size(); ) {
-        cout << "size: " << new_lines.size() << endl;
+        
+        // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+        //cout << "size: " << new_lines.size() << endl;
+        // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+        
         l1 = new_lines[i];
         
         for (size_t j = 0; j < new_lines.size(); j++) {
@@ -167,27 +260,33 @@ vector<Vec4i> combine_lines(vector<Vec4i> lines)
             l2 = new_lines[j];
             
             // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
-            cout << i << "," << j << "\t" << endl;
-            cout << "\tl1(" << l1[X1] << "," << l1[Y1] << ") (" << l1[X2] << "," << l1[Y2] << ")   ";
-            cout << slope(l1) << ",   " << x_intercept(l1) << endl;
-            cout << "\tl2(" << l2[X1] << "," << l2[Y1] << ") (" << l2[X2] << "," << l2[Y2] << ")   ";
-            cout << slope(l2) << ",   " << x_intercept(l2) << endl;
+            //cout << i << "," << j << "\t" << endl;
+            //cout << "\tl1(" << l1[X1] << "," << l1[Y1] << ") (" << l1[X2] << "," << l1[Y2] << ")   ";
+            //cout << slope(l1) << ",   " << x_intercept(l1) << endl;
+            //cout << "\tl2(" << l2[X1] << "," << l2[Y1] << ") (" << l2[X2] << "," << l2[Y2] << ")   ";
+            //cout << slope(l2) << ",   " << x_intercept(l2) << endl;
             // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
-
-
+            
+            
             
             if(same_line(l1,l2)) {
                 same = true;
+                
                 // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
-                cout << "\tsame line" << endl;
+                //cout << "\tsame line" << endl;
                 // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+                
                 // swap lines so l1 is higher up than l2
                 if (greater_than(l1, l2))
                     swap(&l1, &l2);
                 
                 // if line found, remove both previous lines and add created line
                 if (adjacent(l1,l2)) {
-                    cout << "\tlines adjacent" << endl;
+                    
+                    // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+                    //cout << "\tlines adjacent" << endl;
+                    // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+                    
                     // fix by making a new line:
                     //  x[1,2] = avg(l1_x,l2_x), y[1,2] = avg(l1_y,l2_y)   
                     // first find min and max y-values (in case slopes aren't same sign)
@@ -209,14 +308,20 @@ vector<Vec4i> combine_lines(vector<Vec4i> lines)
                     remove_lines((int)i, (int)j, &new_lines);
                     // add to new and old line vectors
                     Vec4i line (x1,y1,x2,y2);
+                    
                     // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
-                    cout << "\tFIX(" << line[X1] << "," << line[Y1] << ") (" << line[X2] << "," << line[Y2] << ")   " << endl;
+                    //cout << "\tFIX(" << line[X1] << "," << line[Y1] << ") (" << line[X2] << "," << line[Y2] << ")   " << endl;
                     // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+                    
                     new_lines.push_back(line);
                     break;  // because lines[i] no longer exists
                 }
                 else if (seperated(l1,l2)) {
-                    cout << "\tlines separated" << endl;
+                    
+                    // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+                    //cout << "\tlines separated" << endl;
+                    // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+                    
                     // fix by making a new line:
                     //  min(x,y) : min(l1_lo, l2_lo)
                     //  max(x,y) : max(l1_hi, l2_hi)
@@ -239,9 +344,11 @@ vector<Vec4i> combine_lines(vector<Vec4i> lines)
                     remove_lines((int)i, (int)j, &new_lines);
                     // add to new and old lines vectors
                     Vec4i line (x1,y1,x2,y2);
+                    
                     // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
-                    cout << "\tFIX(" << line[X1] << "," << line[Y1] << ") (" << line[X2] << "," << line[Y2] << ")   " << endl;
+                    //cout << "\tFIX(" << line[X1] << "," << line[Y1] << ") (" << line[X2] << "," << line[Y2] << ")   " << endl;
                     // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+                    
                     new_lines.push_back(line);
                     break;  // because lines[i] no longer exists
                 }
@@ -270,32 +377,36 @@ vector<Vec4i> extend_lines(vector<Vec4i> lines, int width, int height)
     new_lines.clear();  // just to be sure it's empty
     for (size_t i = 0; i < lines.size(); i++) {
         Vec4i l = lines[i];
+        // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+        //cout << i << " (" << l[X1] << "," << l[Y1] << ") \t(" << l[X2] << "," << l[Y2] << ")" << endl; 
+        // -=-=-=-=-=-=-=-=-=-=-=-=- DEBUGGING -=-=-=-=-=-=-=-=-=-=-=-=-
+        int y_int = y_intercept(l);
+        double s = slope(l);
         // if any points are near an edge, update using y = mx + b
-        // x1 always less than x2 (way HoughLines stores them)
-        if (l[X1] < NEAR_EDGE) {
-            l[X1] = 0;
-            l[Y1] = y_intercept(l);
-        }
-        else if (l[X2] > width-NEAR_EDGE) {
-            l[X2] = width;
-            l[Y2] = slope(l)*l[X2] + y_intercept(l);
-        }
-        // x = (y-b)/m
-        else if ((l[Y1] > height - NEAR_EDGE) || (l[Y2] > height - NEAR_EDGE)) {
+        // y near bottom: x = (y-b)/m
+        if ((l[Y1] > height - NEAR_EDGE) || (l[Y2] > height - NEAR_EDGE)) {
             if (l[Y1] > l[Y2])
                 if (l[Y1] > height - NEAR_EDGE) {
                     l[Y1] = height;
-                    l[X1] = (l[Y1] - y_intercept(l)) / slope(l);
+                    l[X1] = (l[Y1] - y_int) / s;
                 }
                 else    // need this else to exit the if block
                     ;
-            else 
-                if (l[Y2] > height - NEAR_EDGE) {
+            else if (l[Y2] > height - NEAR_EDGE) {
                     l[Y2] = height;
-                    l[X2] = (l[Y2] - y_intercept(l)) / slope(l);
-                }
+                    l[X2] = (l[Y2] - y_int) / s;
+            }
         }
-        
+        // x1 always less than x2 (way HoughLines stores them)
+        else if (l[X1] < NEAR_EDGE || s < 0) {
+            l[X1] = 0;
+            l[Y1] = y_int;
+        }
+        else if (l[X2] > width-NEAR_EDGE || s >= 0) {
+            l[X2] = width;
+            l[Y2] = s*l[X2] + y_int;
+        }
+                
         new_lines.push_back(Vec4i(l[X1],l[Y1],l[X2],l[Y2]));
     }
     
@@ -395,13 +506,15 @@ double slope(Vec4i l)
 {
     return (double)(l[Y2]-l[Y1]) / (double)(l[X2]-l[X1]);
 }
+
 // determine the y-intercept of a line (using farthest point)
 // y0 = y - mx
 double y_intercept(Vec4i l)
 {
     return l[Y2] - slope(l)*l[X2];
 }
-// determine the y-intercept of a line (using farthest point)
+
+// determine the x-intercept of a line (using farthest point)
 // x0 = x - y/m
 double x_intercept(Vec4i l)
 {
