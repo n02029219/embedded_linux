@@ -1,0 +1,12 @@
+github.com/n02029219 README file:
+
+Directory information:
+- project: contains files used on Raspberry Pi (including Makefile, images, etc)
+- mac_files: contains files run from my Mac
+	- scripts: scripts used to copy the project and retrieve program output
+	- xcode_files: contains xcode project with all .cpp/.h files (including images)
+-ppts: contains presentations done in class
+
+File information:
+- LICENSE: generic open-source license found online
+- Documentation.pdf: Documentation on how the project was done
