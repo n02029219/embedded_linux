@@ -5,6 +5,8 @@
 //  lane-detection of an image
 
 #include "project.h"
+#include <string>
+using namespace std;
 
 int main (int argc, const char * argv[])
 {
