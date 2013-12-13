@@ -5,15 +5,13 @@
 //  lane-detection of an image
 
 #include "project.h"
-#include <string>
-using namespace std;
 
 int main (int argc, const char * argv[])
 {
     clock_t start = clock();
     
-    string filestr = argc >= 2 ? "images/" + argv[1] : "images/road3.png";
-    const char* filename = c_str(filestr);
+    const char* filename = argc >= 2 ? argv[1] : "images/road3.png";
+
     cout << "running opencv with " << filename << endl;
     
     // create image matrix
